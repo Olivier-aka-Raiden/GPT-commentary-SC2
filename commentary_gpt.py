@@ -5,18 +5,13 @@ import re
 import time
 
 import openai
-import requests
+from elevenlabs import Voice, VoiceSettings
 from pydub import AudioSegment
 from twitchio.ext import commands
+from audio_caster import AudioCaster
 import configparser
 # import logging
 # logging.basicConfig(level=logging.DEBUG)
-
-# BUG Windows for reading audio files
-AudioSegment.converter = "C:\\ffmpeg\\bin\\ffmpeg.exe"
-AudioSegment.ffmpeg = "C:\\ffmpeg\\bin\\ffmpeg.exe"
-AudioSegment.ffprobe = "C:\\ffmpeg\\bin\\ffprobe.exe"
-from pydub.playback import play
 
 
 print('Python: ', platform.python_version())
@@ -29,6 +24,7 @@ OPENAI_API_KEY = config.get('API_KEYS', 'openapi-key')
 TWITCH_CLIENT_ID = config.get('API_KEYS', 'twitch-client-id')
 ELEVENLABS_API_KEY = config.get('API_KEYS', 'elevenlabs-key')
 openai.api_key = OPENAI_API_KEY
+caster = AudioCaster(api_key=ELEVENLABS_API_KEY)
 
 artosisBotSystemData = {}
 artosisBotSystemData['role'] = "system"
@@ -65,12 +61,13 @@ class Bot(commands.Bot):
         self.start_time = 0
         self.conv = 0
         self.conv_dict = {}
+
     async def event_ready(self):
         # Notify us when everything is ready!
         # We are logged in and ready to chat and use commands...
         print(f'Logged in as | {self.nick}')
         while True:
-            if (time.perf_counter() - self.timer) > 55:
+            if (time.perf_counter() - self.timer) > 30:
                 await self.event_cast()
         
     async def event_cast(self):
@@ -78,8 +75,8 @@ class Bot(commands.Bot):
         with open("data/game_info.txt", "r") as f:
             inputStr = f.read()
         if "commentary" in self.conv_dict:
-            if inputStr.__contains__("\"ingame_time_in_minutes\":0"):
-                self.conv_dict["commentary"] = {}
+            if inputStr.__contains__("\"ingame_time_in_minutes\":1"):
+                self.conv_dict["commentary"] = []
         data = {}
         data['role'] = "user"
         data['content'] = inputStr
@@ -100,25 +97,17 @@ class Bot(commands.Bot):
             answer['role'] = "assistant"
             answer['content'] = resp_str
             self.conv_dict["commentary"].append(answer)
+            artosisVoice = Voice(
+                voice_id="wOyPKl3KU8nWSZ9hCMPJ",
+                settings=VoiceSettings(stability=0.65, similarity_boost=0.8),
+            )
+            caster.cast(resp_str, artosisVoice)
             paragraphs = self.split_into_paragraphs(resp_str)
             for i, paragraph in enumerate(paragraphs, start=1):
                 chunks = self.split_text(paragraph)
                 for chunk in chunks:
                     print(chunk)
-                    json_data = {
-                        'text': chunk,
-                        'voice_settings': {
-                            'stability': 0.6,
-                            'similarity_boost': 0.8
-                        }
-                    }
-                    t2sResponse = requests.post('https://api.elevenlabs.io/v1/text-to-speech/wOyPKl3KU8nWSZ9hCMPJ', headers=headers, json=json_data)
-                    with open('prompt_response.mp3', 'wb') as f:
-                        f.write(t2sResponse.content)
-                    prompt_response_speech = 'prompt_response.mp3'
-                    sound = AudioSegment.from_mp3(prompt_response_speech)
-                    play(sound)
-                    await self.connected_channels[0].send(chunk)
+                    #await self.connected_channels[0].send(chunk)
                     #await asyncio.sleep(5)  # Wait for 5 seconds
                         
     def split_into_paragraphs(self, text):
@@ -126,7 +115,7 @@ class Bot(commands.Bot):
         # Removing leading and trailing whitespace from each paragraph
         paragraphs = [paragraph.strip() for paragraph in paragraphs]
         return paragraphs
-        
+
     def split_text(self, text):
         # Split the text into sentences
         sentences = re.split(r'(?<=[.!?])\s', text)
@@ -152,4 +141,3 @@ class Bot(commands.Bot):
 
 bot = Bot()
 bot.run()
-    
