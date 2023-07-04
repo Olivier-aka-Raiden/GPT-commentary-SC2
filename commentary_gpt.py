@@ -92,6 +92,7 @@ class Bot(commands.Bot):
             temperature=1.2,
             messages=self.conv_dict["commentary"])
         resp_str = re.sub(r'\*.*?\*|\(.*?\)', '', response['choices'][0]['message']['content'].replace('*laughs*', 'ha, ha, ha !!!!').replace('(laughs)','ha, ha, ha !!!! Can you imagine !????'))
+        resp_str = resp_str.replace('Artosis:', '')
         if (not response['choices'][0]['message']['content'].__contains__('Traceback')):
             answer = {}
             answer['role'] = "assistant"

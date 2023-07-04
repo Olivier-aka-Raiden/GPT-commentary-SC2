@@ -125,7 +125,8 @@ class Bot(commands.Bot):
             messages=self.conv_dict["artosis"])
         resp_str = re.sub(r'\*.*?\*|\(.*?\)', '', response['choices'][0]['message']['content'].replace('*laughs*', 'ha, ha, ha !!!!').replace('(laughs)',
                                                                                                                                               'ha, ha, ha !!!! Can you imagine !????'))
-        resp_str = resp_str.replace('Artosis :', '')
+        resp_str = resp_str.replace('Artosis:', '')
+        resp_str = resp_str.replace('Tasteless:', '')
         if (not response['choices'][0]['message']['content'].__contains__('Traceback')):
             answer = {}
             answer['role'] = "user"
@@ -170,7 +171,8 @@ class Bot(commands.Bot):
             messages=self.conv_dict["tasteless"])
         resp_str = re.sub(r'\*.*?\*|\(.*?\)', '', response['choices'][0]['message']['content'].replace('*laughs*', 'ha, ha, ha !!!!').replace('(laughs)',
                                                                                                                                               'ha, ha, ha !!!! Can you imagine !????'))
-        resp_str = resp_str.replace('Tasteless :', '')
+        resp_str = resp_str.replace('Tasteless:', '')
+        resp_str = resp_str.replace('Artosis:', '')
         if (not response['choices'][0]['message']['content'].__contains__('Traceback')):
             answer = {}
             answer['role'] = "user"
