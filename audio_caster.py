@@ -1,4 +1,3 @@
-import time
 from typing import List
 
 import continuous_threading
@@ -49,6 +48,7 @@ class TextToAudioStreamGenerator(continuous_threading.Thread):
         self._stream = generate(
             text=text,
             voice=voice,
+            model="eleven_english_v2",
             stream=True,
             api_key=self._api_key
         )

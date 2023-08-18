@@ -1,15 +1,15 @@
-import json
+import os
+import configparser
 import os
 import platform
 import re
 import time
 
+import elevenlabs
 import openai
 from elevenlabs import Voice, VoiceSettings
-from pydub import AudioSegment
 from twitchio.ext import commands
-from audio_caster import AudioCaster
-import configparser
+
 # import logging
 # logging.basicConfig(level=logging.DEBUG)
 
@@ -24,39 +24,40 @@ OPENAI_API_KEY = config.get('API_KEYS', 'openapi-key')
 TWITCH_CLIENT_ID = config.get('API_KEYS', 'twitch-client-id')
 ELEVENLABS_API_KEY = config.get('API_KEYS', 'elevenlabs-key')
 openai.api_key = OPENAI_API_KEY
-caster = AudioCaster(api_key=ELEVENLABS_API_KEY)
+elevenlabs.set_api_key(ELEVENLABS_API_KEY)
 
 artosisBotSystemData = {}
 artosisBotSystemData['role'] = "system"
 artosisBotSystemData['content'] = """
-You are Artosis, a famous Starcraft commentator known for your expertise in the game. you are in the middle of an intense match, live-commentating a Starcraft II match with your duo Tasteless.
-Your goal is to provide entertaining and insightful commentary as the game progresses. Remember to use your signature joyful and occasionally angry tone, punctuating your sentences with exclamation or question marks to emphasize your feelings.
-You are commenting live, you receive updates in the form of JSON representing the current state of the game.
-Don't explicitely tell the numbers, your commentary should remain entertaining and so, don't go too much into details. Just give the overall picture of the game.
+You are Artosis, a famous Starcraft commentator known for your expertise in the game. 
+You are currently in the middle of an intense live commentary for a Starcraft II match with your partner Tasteless. 
+Your goal is to provide entertaining and insightful commentary as the game progresses. 
+Make sure to showcase your signature joyful and occasionally angry tone while punctuating your sentences with exclamation or question marks to emphasize your feelings. 
+Remember, you will receive updates about the current state of the game in the form of JSON. 
+Do not explicitly mention numbers, rather focus on giving an overall picture of the game’s progress. 
+Until the 3-minute mark, avoid going into too much detail about buildings and worker count, except if there are Photon cannons indicating a photon rush. 
+When introducing players and their corresponding races in the beginning, omit mentioning colors or positions. 
+Feel free to interact with Tasteless' commentary, but refrain from generating his speech or answers. 
+Keep your responses under 4 sentences to leave room for Tasteless to engage with the conversation.
 The updates will be given in the following format:
 {"ingame_time_in_minutes":2,"Player1":{"name":"Krillin","race":"ZERG","ArmyCount":0,"units":{"Drone":14},"buildings":{"Hatchery":1,"Spawning Pool":1,"Extractor":1}},"Player2":{"name":"Raiden-p-bot","race":"PROTOSS","ArmyCount":0,"units":{"Probe":19},"buildings":{"Pylon":2,"Assimilator":1,"Nexus":1,"Forge":1,"Gateway":1}}}
-Every time, you will comment based on the last json you received. Use ArmyCount to decide who's leading and who's in a tough spot. The show is ongoing so don't present players when ingame_time_in_minutes is passed the 2 minutes mark. Also, before the 3 minutes, don't mention buildings and worker count at all, it is not relevant at this stage of the game. The only exception is Photon cannon as it means photon rush is happening !
-If you have only one JSON with ingame_time_in_minutes inferior to 2, introduce the players and their corresponding races (do not mention colors or positions). After that, no need to say greetings nor present players. Consider you are in the middle of your cast.
-As the game progresses, focus on providing lively and engaging commentary on the ongoing events. Feel free to share off-topic stories to entertain the audience From time to time. Remember to maintain a sense of excitement and humor throughout your commentary!
-Try to interract with what Tasteless says, you have to drive the conversation but you can also make a joke with your partner to entertain the audiance.
-You say what Artosis say, you should never generate Tasteless speech/answers. Tasteless speech will be given to you. DO NOT PRECISE WHO IS TALKING, YOU ARE ARTOSIS, all your answer is just Artosis talking.
-Keep your answers less than 5 sentences so you let your partner taking part in the conversation !
+Remember to maintain a sense of excitement and humor throughout your commentary!
 """
 artosisBotData = [artosisBotSystemData]
 
 tastelessBotSystemData = {}
 tastelessBotSystemData['role'] = "system"
 tastelessBotSystemData['content'] = """
-You are Tasteless, a famous Starcraft commentator known for your funny interactions with Artosis your duo in casting Starcraft II games. You are in the middle of an intense match, live-commentating a Starcraft II match. 
-Your goal is to provide entertaining and insightful commentary as the game progresses. Punctuate your sentences with exclamation or question marks to emphasize your feelings.
-You are commenting live, you receive updates in the form of JSON representing the current state of the game.
-Don't explicitely tell the numbers, your commentary should remain entertaining and so, don't go into details. Just give the overall picture of the game.
-The updates will be given in the following format:
+You are Tasteless, the renowned Starcraft commentator famous for your hilarious interactions with Artosis during Starcraft II matches. 
+As we cast this intense live game, your mission is to provide entertaining and insightful commentary that captivates the audience. 
+Feel free to punctuate your sentences with exclamation or question marks to emphasize your excitement! 
+You'll receive updates in JSON format representing the current state of the game, but remember not to go into specific numbers or details. 
+Instead, focus on delivering an overall picture of the match. Your main objective is to respond to Artosis's commentary by sharing witty jokes, funny anecdotes, or engaging stories about your experiences as an American in South Korea.
+ Keep your responses concise, limited to four sentences, to allow Artosis to join in on the conversation. 
+ Remember to maintain a sense of enthusiasm, humor, and keep the spotlight on you, Tasteless, instead of generating Artosis's speech. 
+ Let's dive into this match and entertain the viewers together!
+ The updates about the ongoing game will be given in the following JSON format:
 {"ingame_time_in_minutes":2,"Player1":{"name":"Krillin","race":"ZERG","ArmyCount":0,"units":{"Drone":14},"buildings":{"Hatchery":1,"Spawning Pool":1,"Extractor":1}},"Player2":{"name":"Raiden-p-bot","race":"PROTOSS","ArmyCount":0,"units":{"Probe":19},"buildings":{"Pylon":2,"Assimilator":1,"Nexus":1,"Forge":1,"Gateway":1}}}
-The show is ongoing so don't present players and don't introduce players or your duo.
-Your main goal is to respond to the commentary of your partner Artosis, you have to answer or follow his conversation with the goal to make the audiance laugh. Sometimes you make jokes and tell funny stories that happened to you as an American in South Korea or funny anecdote.
-You only talk as Tasteless, you should never generate Artosis speech/answers. Artosis speech will be given to you as input. DO NOT WRITE WHO IS TALKING, YOU ARE TASTELESS, your ouput is only Tasteless's talk. 
-Remember to maintain a sense of excitement and humor throughout your commentary! Keep your answers less than 5 sentences so you let your partner taking part in the conversation !
 """
 tastelessBotData = [tastelessBotSystemData]
 
@@ -73,6 +74,7 @@ class Bot(commands.Bot):
     start_time = 0
     conv = 0
     conv_dict = {}
+    collected_chunks = ""
 
     def __init__(self):
         # Initialise our Bot with our access token, prefix and a list of channels to join on boot...
@@ -80,11 +82,13 @@ class Bot(commands.Bot):
         # initial_channels can also be a callable which returns a list of strings...
         super().__init__(token=TOKEN, client_id=os.environ.get('CLIENT_ID', TWITCH_CLIENT_ID), nick=BOT_USERNAME, prefix='!',
                          initial_channels=[CHANNEL_NAME])
+        self.min_chunk_size = 50
         self.timer = 0
         self.last_to_talk = 0
         self.start_time = 0
         self.conv = 0
         self.conv_dict = {}
+        self.collected_chunks = ""
 
     async def event_ready(self):
         # Notify us when everything is ready!
@@ -111,43 +115,66 @@ class Bot(commands.Bot):
         data = {}
         data['role'] = "user"
         data['content'] = inputStr
-        #Add Artosis speech to Tasteless data
+        self.collected_chunks = ""
+        artosisVoice = Voice(
+            voice_id="wOyPKl3KU8nWSZ9hCMPJ",
+            settings=VoiceSettings(stability=0.5, similarity_boost=0.85),
+        )
         if "artosis" in self.conv_dict:
             self.conv_dict["artosis"].append(data)
+            if len(self.conv_dict["artosis"]) > 5:
+                self.conv_dict["artosis"] = [self.conv_dict["artosis"][0]] + self.conv_dict["artosis"][2:]
         else:
             self.conv_dict["artosis"] = artosisBotData.copy()
             self.conv_dict["artosis"].append(data)
-        print(json.dumps(self.conv_dict))
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo-16k-0613",
-            max_tokens=400,
-            temperature=1.2,
-            messages=self.conv_dict["artosis"])
-        resp_str = re.sub(r'\*.*?\*|\(.*?\)', '', response['choices'][0]['message']['content'].replace('*laughs*', 'ha, ha, ha !!!!').replace('(laughs)',
-                                                                                                                                              'ha, ha, ha !!!! Can you imagine !????'))
-        resp_str = resp_str.replace('Artosis:', '')
-        resp_str = resp_str.replace('Tasteless:', '')
-        if (not response['choices'][0]['message']['content'].__contains__('Traceback')):
-            answer = {}
-            answer['role'] = "user"
-            answer['content'] = resp_str
-            if "tasteless" in self.conv_dict:
-                self.conv_dict["tasteless"].append(answer)
-            else:
-                self.conv_dict["tasteless"] = tastelessBotData.copy()
-                self.conv_dict["tasteless"].append(answer)
-            artosisVoice = Voice(
-                voice_id="wOyPKl3KU8nWSZ9hCMPJ",
-                settings=VoiceSettings(stability=0.65, similarity_boost=0.8),
+        resp_str = self.cast_speech(self.conv_dict["artosis"])
+        full_response = ""
+        collected_chunks = []
+        current_chunk = ""
+        for chunk in resp_str:
+            current_chunk += chunk
+            # Split on any punctuation that ends a sentence (!, ?, ..., .)
+            while re.search(r'[!?.]+\s', current_chunk):
+                match = re.search(r'[!?.]+\s', current_chunk)
+                sentence, current_chunk = current_chunk.split(match.group(), 1)
+                current_chunk = match.group() + current_chunk  # Put the punctuation back
+                if len(''.join(collected_chunks)) < self.min_chunk_size:
+                    collected_chunks.append(sentence)
+                    break
+                elif len(''.join(collected_chunks)) >= self.min_chunk_size:
+                    collected_chunks.append(sentence)
+                    audio_stream = elevenlabs.generate(
+                        text=''.join(collected_chunks),
+                        voice=artosisVoice,
+                        stream=True
+                    )
+                    elevenlabs.stream(audio_stream)
+                    full_response += ''.join(collected_chunks)
+                    collected_chunks = []  # Clear collected chunks after processing
+
+        # Process any remaining chunk
+        if current_chunk:
+            collected_chunks.append(current_chunk)
+            audio_stream = elevenlabs.generate(
+                text=''.join(collected_chunks),
+                voice=artosisVoice,
+                stream=True
             )
-            caster.cast(resp_str, artosisVoice)
-            paragraphs = self.split_into_paragraphs(resp_str)
-            for i, paragraph in enumerate(paragraphs, start=1):
-                chunks = self.split_text(paragraph)
-                for chunk in chunks:
-                    print(chunk)
-                    # await self.connected_channels[0].send(chunk)
-                    # await asyncio.sleep(5)  # Wait for 5 seconds
+            elevenlabs.stream(audio_stream)
+            full_response += ''.join(collected_chunks)
+        print(full_response)
+        full_response = re.sub(r'\*.*?\*|\(.*?\)', '', full_response)
+        answer = {}
+        answer['role'] = "user"
+        answer['content'] = full_response
+        if "tasteless" in self.conv_dict:
+            self.conv_dict["tasteless"].append(answer)
+            if len(self.conv_dict["tasteless"]) > 5:
+                self.conv_dict["tasteless"] = [self.conv_dict["tasteless"][0]] + self.conv_dict["tasteless"][2:]
+        else:
+            self.conv_dict["tasteless"] = tastelessBotData.copy()
+            self.conv_dict["tasteless"].append(answer)
+
 
     async def event_t_cast(self):
         self.timer = time.perf_counter()
@@ -156,73 +183,73 @@ class Bot(commands.Bot):
         if "tasteless" in self.conv_dict:
             if inputStr.__contains__("\"ingame_time_in_minutes\":1, "):
                 self.conv_dict["tasteless"] = []
-        data = {}
-        data['role'] = "user"
-        data['content'] = inputStr
+
+        data = {'role': "user", 'content': inputStr}
         if "tasteless" in self.conv_dict:
             self.conv_dict["tasteless"].append(data)
+            if len(self.conv_dict["tasteless"]) > 5:
+                self.conv_dict["tasteless"] = [self.conv_dict["tasteless"][0]] + self.conv_dict["tasteless"][2:]
         else:
             self.conv_dict["tasteless"] = tastelessBotData.copy()
             self.conv_dict["tasteless"].append(data)
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo-16k-0613",
-            max_tokens=400,
-            temperature=1.2,
-            messages=self.conv_dict["tasteless"])
-        resp_str = re.sub(r'\*.*?\*|\(.*?\)', '', response['choices'][0]['message']['content'].replace('*laughs*', 'ha, ha, ha !!!!').replace('(laughs)',
-                                                                                                                                              'ha, ha, ha !!!! Can you imagine !????'))
-        resp_str = resp_str.replace('Tasteless:', '')
-        resp_str = resp_str.replace('Artosis:', '')
-        if (not response['choices'][0]['message']['content'].__contains__('Traceback')):
-            answer = {}
-            answer['role'] = "user"
-            answer['content'] = resp_str
-            #Add Tasteless speech to artosis data
-            if "artosis" in self.conv_dict:
-                self.conv_dict["artosis"].append(answer)
-            else:
-                self.conv_dict["artosis"] = artosisBotData.copy()
-                self.conv_dict["artosis"].append(answer)
-            tastelessVoice = Voice(
-                voice_id="EajSsq19kEDYJCcZ0Crv",
-                settings=VoiceSettings(stability=0.65, similarity_boost=0.8),
-            )
-            caster.cast(resp_str, tastelessVoice)
-            paragraphs = self.split_into_paragraphs(resp_str)
-            for i, paragraph in enumerate(paragraphs, start=1):
-                chunks = self.split_text(paragraph)
-                for chunk in chunks:
-                    print(chunk)
-                    # await self.connected_channels[0].send(chunk)
-                    # await asyncio.sleep(5)  # Wait for 5 seconds
-
-    def split_into_paragraphs(self, text):
-        paragraphs = text.split("\n\n")  # Splitting by empty lines
-        # Removing leading and trailing whitespace from each paragraph
-        paragraphs = [paragraph.strip() for paragraph in paragraphs]
-        return paragraphs
-
-    def split_text(self, text):
-        # Split the text into sentences
-        sentences = re.split(r'(?<=[.!?])\s', text)
-
-        # Initialize variables
-        chunks = []
+        tastelessVoice = Voice(
+            voice_id="EajSsq19kEDYJCcZ0Crv",
+            settings=VoiceSettings(stability=0.6, similarity_boost=0.8),
+        )
+        resp_str = self.cast_speech(self.conv_dict["tasteless"])
+        full_response = ""
+        collected_chunks = []
         current_chunk = ""
 
-        # Iterate through each sentence
-        for sentence in sentences:
-            if len(current_chunk) + len(sentence) <= 300:
-                # If adding the sentence to the current chunk keeps it within 400 characters, append it
-                current_chunk += sentence + ' '
-            else:
-                # If adding the sentence exceeds 400 characters, start a new chunk
-                chunks.append(current_chunk)
-                current_chunk = sentence + ' '
-        # Append the last chunk
-        chunks.append(current_chunk)
+        for chunk in resp_str:
+            current_chunk += chunk
+            # Split on any punctuation that ends a sentence (!, ?, ..., .)
+            while re.search(r'[!?.]+\s', current_chunk):
+                match = re.search(r'[!?.]+\s', current_chunk)
+                sentence, current_chunk = current_chunk.split(match.group(), 1)
+                current_chunk = match.group() + current_chunk  # Put the punctuation back
+                if len(''.join(collected_chunks)) < self.min_chunk_size:
+                    collected_chunks.append(sentence)
+                    break
+                elif len(''.join(collected_chunks)) >= self.min_chunk_size:
+                    collected_chunks.append(sentence)
+                    audio_stream = elevenlabs.generate(
+                        text=''.join(collected_chunks),
+                        voice=tastelessVoice,
+                        stream=True
+                    )
+                    elevenlabs.stream(audio_stream)
+                    full_response += ''.join(collected_chunks)
+                    collected_chunks = []  # Clear collected chunks after processing
+        # Process any remaining chunk
+        if current_chunk:
+            collected_chunks.append(current_chunk)
+            audio_stream = elevenlabs.generate(
+                text=''.join(collected_chunks),
+                voice=tastelessVoice,
+                stream=True
+            )
+            elevenlabs.stream(audio_stream)
+            full_response += ''.join(collected_chunks)
+        print(full_response)
+        full_response = re.sub(r'\*.*?\*|\(.*?\)', '', full_response)
+        answer = {'role': "user", 'content': full_response}
+        #Add Tasteless speech to artosis data
+        if "artosis" in self.conv_dict:
+            self.conv_dict["artosis"].append(answer)
+            if len(self.conv_dict["artosis"]) > 5:
+                self.conv_dict["artosis"] = [self.conv_dict["artosis"][0]] + self.conv_dict["artosis"][2:]
 
-        return chunks
+
+    def cast_speech(self, prompt: str):
+        for chunk in openai.ChatCompletion.create(
+                model="gpt-4-0613",
+                max_tokens=200,
+                temperature=1,
+                stream=True,
+                messages=prompt):
+            if (text_chunk := chunk["choices"][0]["delta"].get("content")) is not None:
+                yield text_chunk
 
 
 bot = Bot()
