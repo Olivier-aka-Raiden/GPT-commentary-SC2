@@ -4,10 +4,13 @@ import os
 import platform
 import re
 import time
-
-import elevenlabs
+import subprocess
 import openai
-from elevenlabs import Voice, VoiceSettings
+from pathlib import Path
+from openai import OpenAI
+client = OpenAI()
+
+speech_file_path = Path(__file__).parent / "speech.mp3"
 from twitchio.ext import commands
 
 # import logging
@@ -22,25 +25,24 @@ BOT_USERNAME = config.get('API_KEYS', 'bot-username')
 TOKEN = config.get('API_KEYS', 'twitch-token')
 OPENAI_API_KEY = config.get('API_KEYS', 'openapi-key')
 TWITCH_CLIENT_ID = config.get('API_KEYS', 'twitch-client-id')
-ELEVENLABS_API_KEY = config.get('API_KEYS', 'elevenlabs-key')
-openai.api_key = OPENAI_API_KEY
-elevenlabs.set_api_key(ELEVENLABS_API_KEY)
 
 artosisBotSystemData = {}
 artosisBotSystemData['role'] = "system"
 artosisBotSystemData['content'] = """
-You are Artosis, a famous Starcraft commentator known for your expertise in the game. 
-You are currently in the middle of an intense live commentary for a Starcraft II match with your partner Tasteless. 
+You are Echo, a famous Starcraft commentator known for your expertise in the game. 
+You are currently in the middle of an intense live commentary for a Starcraft II match with your partner Vixen. 
 Your goal is to provide entertaining and insightful commentary as the game progresses. 
 Make sure to showcase your signature joyful and occasionally angry tone while punctuating your sentences with exclamation or question marks to emphasize your feelings. 
 Remember, you will receive updates about the current state of the game in the form of JSON. 
+You will also receive the previous messages of your co-caster as context.
 Do not explicitly mention numbers, rather focus on giving an overall picture of the game’s progress. 
-Avoid going into details about buildings and worker count, except if there are Photon cannons indicating a photon rush.
-You should never list all the buildings or units of each player but describe who has an advantage and draw a global picture on how the game is evolving. 
+Avoid going into details about buildings and worker count, except if there are Photon cannons indicating an agressive photon rush.
+You should never list all the buildings or units of each player but you can describe who has an advantage, what kind of unit composition they have, what is their strategy : timing push, macro, cheese (cheese is gambling strategy that either leads to win or lose). 
 When introducing players and their corresponding races in the beginning, omit mentioning colors or positions. 
-Feel free to interact with Tasteless' commentary, but refrain from generating his speech or answers. 
-Keep your responses under 4 sentences to leave room for Tasteless to engage with the conversation.
+Feel free to interact with Vixen's commentary, but refrain from generating her speech or answers. 
+Keep your responses under 4 sentences to leave room for Vixen to engage with the conversation.
 The updates will be given in the following format:
+If player name is null, replace it by Raiden and this is when a human plays a bot.
 {"ingame_time_in_minutes":2,"Player1":{"name":"Krillin","race":"ZERG","armySupply":4,"units":{"Drone":14,"zergling":4},"units_killed":{"zealot":2},"buildings":{"Hatchery":1,"Spawning Pool":1,"Extractor":1}},"Player2":{"name":"Raiden-p-bot","race":"PROTOSS","armySupply":4,"units":{"Probe":19, "zealot":2},"units_killed":{"zergling":2},"buildings":{"Pylon":2,"Assimilator":1,"Nexus":1,"Forge":1,"Gateway":1}}}
 Remember to maintain a sense of excitement and humor throughout your commentary!
 """
@@ -49,27 +51,21 @@ artosisBotData = [artosisBotSystemData]
 tastelessBotSystemData = {}
 tastelessBotSystemData['role'] = "system"
 tastelessBotSystemData['content'] = """
-You are Tasteless, the renowned Starcraft commentator famous for your hilarious interactions with Artosis during Starcraft II matches. 
+You are Vixen, the renowned Starcraft commentator famous for your hilarious interactions with Echo during Starcraft II matches. 
 As we cast this intense live game, your mission is to provide entertaining and insightful commentary that captivates the audience. 
 Feel free to punctuate your sentences with exclamation or question marks to emphasize your excitement! 
-You'll receive updates in JSON format representing the current state of the game, but remember not to go into specific numbers or details. 
-Avoid going into details about buildings and worker count, except if there are Photon cannons indicating a photon rush.
-You should never list all the buildings or units of each player but describe who has an advantage and draw a global picture on how the game is evolving. 
-Your main objective is to respond to Artosis's commentary by sharing witty jokes, funny anecdotes, or engaging stories about your experiences as an American in South Korea.
-Keep your responses concise, limited to four sentences, to allow Artosis to join in on the conversation. 
-Remember to maintain a sense of enthusiasm, humor, and keep the spotlight on you, Tasteless, instead of generating Artosis's speech. 
-Let's dive into this match and entertain the viewers together!
+You'll receive updates in JSON format representing the current state of the game, but remember not to go into specific numbers or details.
+You will also receive the previous messages of your co-caster as context. 
+Avoid going into details about buildings and worker count, except if there are Photon cannons indicating an agressive photon rush.
+You should never list all the buildings or units of each player but you can describe who has an advantage, what kind of unit composition they have, what is their strategy : timing push, macro, cheese (cheese is gambling strategy that either leads to win or lose).
+Your main objective is to respond to Echo's commentary by sharing witty jokes, funny anecdotes, or engaging stories related to the game or your cocaster.
+Keep your responses concise, limited to four sentences, to allow Echo to join in on the conversation. 
+Remember to maintain a sense of enthusiasm, humor, You should only generate your speech, Vixen, refrain from generating Echo's speech or answers.
+If player name is null, replace it by Raiden and this is when a human plays a bot.
 The updates about the ongoing game will be given in the following JSON format:
 {"ingame_time_in_minutes":2,"Player1":{"name":"Krillin","race":"ZERG","armySupply":4,"units":{"Drone":14,"zergling":4},"units_killed":{"zealot":2},"buildings":{"Hatchery":1,"Spawning Pool":1,"Extractor":1}},"Player2":{"name":"Raiden-p-bot","race":"PROTOSS","armySupply":4,"units":{"Probe":19, "zealot":2},"units_killed":{"zergling":2},"buildings":{"Pylon":2,"Assimilator":1,"Nexus":1,"Forge":1,"Gateway":1}}}
 """
 tastelessBotData = [tastelessBotSystemData]
-
-headers = {
-    'accept': 'audio/mpeg',
-    'xi-api-key': ELEVENLABS_API_KEY,
-    'Content-Type': 'application/json',
-}
-
 
 class Bot(commands.Bot):
     last_to_talk = 0
@@ -119,10 +115,6 @@ class Bot(commands.Bot):
         data['role'] = "user"
         data['content'] = inputStr
         self.collected_chunks = ""
-        artosisVoice = Voice(
-            voice_id="wOyPKl3KU8nWSZ9hCMPJ",
-            settings=VoiceSettings(stability=0.5, similarity_boost=0.85),
-        )
         if "artosis" in self.conv_dict:
             self.conv_dict["artosis"].append(data)
             if len(self.conv_dict["artosis"]) > 5:
@@ -146,27 +138,36 @@ class Bot(commands.Bot):
                     break
                 elif len(''.join(collected_chunks)) >= self.min_chunk_size:
                     collected_chunks.append(sentence)
-                    audio_stream = elevenlabs.generate(
-                        text=''.join(collected_chunks),
-                        voice=artosisVoice,
-                        model="eleven_multilingual_v2",
-                        stream=True
+                    # generate voice
+                    response = client.audio.speech.create(
+                        model="tts-1",
+                        voice="echo",
+                        input=''.join(collected_chunks)
                     )
-                    elevenlabs.stream(audio_stream)
+                    response.stream_to_file(speech_file_path)
+                    try:
+                        subprocess.run(['mpv', '--no-video', '--quiet', speech_file_path])
+                    except FileNotFoundError:
+                        print("Make sure mpv is installed and added to your system's PATH.")
                     full_response += ''.join(collected_chunks)
                     collected_chunks = []  # Clear collected chunks after processing
 
         # Process any remaining chunk
         if current_chunk:
             collected_chunks.append(current_chunk)
-            audio_stream = elevenlabs.generate(
-                text=''.join(collected_chunks),
-                voice=artosisVoice,
-                model="eleven_multilingual_v2",
-                stream=True
+            # generate voice
+            response = client.audio.speech.create(
+                model="tts-1",
+                voice="echo",
+                input=''.join(collected_chunks)
             )
-            elevenlabs.stream(audio_stream)
+            response.stream_to_file(speech_file_path)
+            try:
+                subprocess.run(['mpv', '--no-video', '--quiet', speech_file_path])
+            except FileNotFoundError:
+                print("Make sure mpv is installed and added to your system's PATH.")
             full_response += ''.join(collected_chunks)
+
         print(full_response)
         full_response = re.sub(r'\*.*?\*|\(.*?\)', '', full_response)
         answer = {}
@@ -197,10 +198,6 @@ class Bot(commands.Bot):
         else:
             self.conv_dict["tasteless"] = tastelessBotData.copy()
             self.conv_dict["tasteless"].append(data)
-        tastelessVoice = Voice(
-            voice_id="EajSsq19kEDYJCcZ0Crv",
-            settings=VoiceSettings(stability=0.6, similarity_boost=0.8),
-        )
         resp_str = self.cast_speech(self.conv_dict["tasteless"])
         full_response = ""
         collected_chunks = []
@@ -218,23 +215,35 @@ class Bot(commands.Bot):
                     break
                 elif len(''.join(collected_chunks)) >= self.min_chunk_size:
                     collected_chunks.append(sentence)
-                    audio_stream = elevenlabs.generate(
-                        text=''.join(collected_chunks),
-                        voice=tastelessVoice,
-                        stream=True
+                    # generate voice
+                    response = client.audio.speech.create(
+                        model="tts-1",
+                        voice="nova",
+                        input=''.join(collected_chunks)
                     )
-                    elevenlabs.stream(audio_stream)
+                    response.stream_to_file(speech_file_path)
+                    # Use subprocess to call mpv with the MP3 file path
+                    try:
+                        subprocess.run(['mpv', '--no-video', '--quiet', speech_file_path])
+                    except FileNotFoundError:
+                        print("Make sure mpv is installed and added to your system's PATH.")
                     full_response += ''.join(collected_chunks)
                     collected_chunks = []  # Clear collected chunks after processing
         # Process any remaining chunk
         if current_chunk:
             collected_chunks.append(current_chunk)
-            audio_stream = elevenlabs.generate(
-                text=''.join(collected_chunks),
-                voice=tastelessVoice,
-                stream=True
+            # generate voice
+            response = client.audio.speech.create(
+                model="tts-1",
+                voice="nova",
+                input=''.join(collected_chunks)
             )
-            elevenlabs.stream(audio_stream)
+            response.stream_to_file(speech_file_path)
+            # Use subprocess to call mpv with the MP3 file path
+            try:
+                subprocess.run(['mpv', '--no-video', '--quiet', speech_file_path])
+            except FileNotFoundError:
+                print("Make sure mpv is installed and added to your system's PATH.")
             full_response += ''.join(collected_chunks)
         print(full_response)
         full_response = re.sub(r'\*.*?\*|\(.*?\)', '', full_response)
@@ -246,14 +255,14 @@ class Bot(commands.Bot):
                 self.conv_dict["artosis"] = [self.conv_dict["artosis"][0]] + self.conv_dict["artosis"][2:]
 
 
-    def cast_speech(self, prompt: str):
-        for chunk in openai.ChatCompletion.create(
-                model="gpt-4-0613",
+    def cast_speech(self, prompt):
+        for chunk in client.chat.completions.create(
+                model="gpt-4-1106-preview",
                 max_tokens=200,
                 temperature=0.7,
                 stream=True,
                 messages=prompt):
-            if (text_chunk := chunk["choices"][0]["delta"].get("content")) is not None:
+            if (text_chunk := chunk.choices[0].delta.content) is not None:
                 yield text_chunk
 
 
