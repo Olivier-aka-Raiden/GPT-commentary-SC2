@@ -2,10 +2,10 @@
 
 This project implements a live commentary system for Starcraft II matches using AI-generated speech and OpenAI's text-to-speech (TTS) technology. The system features two AI commentators, Echo and Vixen, who provide entertaining and insightful commentary based on the current game state.
 
-real casters' voice cloning : 
+### real casters' voice cloning : 
 [![Video Title](https://img.youtube.com/vi/krkvMkw7RdE/0.jpg)](https://www.youtube.com/watch?v=krkvMkw7RdE)
 
-gpt-4 with openai TTS:
+### gpt-4 with openai TTS:
 [![Video Title](https://img.youtube.com/vi/e4bQoqO6J7c/0.jpg)](https://www.youtube.com/watch?v=e4bQoqO6J7c)
 
 ## Features
